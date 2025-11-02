@@ -13,12 +13,25 @@ const LegalDocumentApp = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [previewContent, setPreviewContent] = useState('');
   const chatEndRef = useRef(null);
+  const inputRef = useRef(null);
 
   const API_BASE = 'http://localhost:8000';
 
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+    // Keep focus on the input whenever the conversation updates so the
+    // user can continue typing without having to click the field again.
+    if (inputRef.current) {
+      try {
+        inputRef.current.focus();
+        const len = inputRef.current.value?.length || 0;
+        // Move caret to the end
+        inputRef.current.setSelectionRange(len, len);
+      } catch (e) {
+        // ignore if not supported
+      }
     }
   }, [conversationHistory]);
 
@@ -312,14 +325,15 @@ const LegalDocumentApp = () => {
 
                 <div className="flex gap-2">
                   <input
-                    type="text"
-                    value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Type your answer..."
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={loading}
-                  />
+                      ref={inputRef}
+                      type="text"
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      placeholder="Type your answer..."
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={loading}
+                    />
                   <button
                     onClick={handleSendMessage}
                     disabled={loading || !userInput.trim()}
