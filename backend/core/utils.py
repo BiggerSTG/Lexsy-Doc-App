@@ -8,34 +8,81 @@ def extract_placeholders(doc: Document) -> List[Dict[str, str]]:
     """Extract placeholders from document in format [Placeholder Name]"""
     placeholders = []
     seen = set()
+    
+    # Pattern to match [Text] or \[Text\]
     pattern = r'\[([^\]]+)\]'
-
-    # Paragraphs
+    
+    # Check paragraphs
     for para in doc.paragraphs:
-        matches = re.findall(pattern, para.text)
+        text = para.text
+        matches = re.finditer(pattern, text)
         for match in matches:
-            if match not in seen:
-                seen.add(match)
+            placeholder = match.group(1)
+            
+            # Skip if it's just underscores or blank
+            if placeholder.replace('_', '').strip() == '':
+                # Look for quoted text after the placeholder
+                after_text = text[match.end():]
+                quote_match = re.search(r'"([^"]+)"', after_text[:100])  # Search in next 100 chars
+                
+                if not quote_match:
+                    # Look for quoted text before the placeholder
+                    before_text = text[:match.start()]
+                    # Find the last occurrence of quoted text before placeholder
+                    quote_matches = list(re.finditer(r'"([^"]+)"', before_text))
+                    if quote_matches:
+                        quote_match = quote_matches[-1]  # Get the closest one
+                
+                if quote_match:
+                    descriptive_name = quote_match.group(1)
+                    placeholder = f"{descriptive_name} in $"
+                else:
+                    placeholder = "Amount in $"
+            
+            if placeholder not in seen and not placeholder.replace('_', '').strip() == '':
+                seen.add(placeholder)
                 placeholders.append({
-                    'name': match,
+                    'name': placeholder,
                     'value': None,
-                    'question': f"What should I fill in for [{match}]?"
+                    'question': f"What should I fill in for [{placeholder}]?"
                 })
-
-    # Tables
+    
+    # Check tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                matches = re.findall(pattern, cell.text)
+                text = cell.text
+                matches = re.finditer(pattern, text)
                 for match in matches:
-                    if match not in seen:
-                        seen.add(match)
+                    placeholder = match.group(1)
+                    
+                    # Skip if it's just underscores
+                    if placeholder.replace('_', '').strip() == '':
+                        # Look for quoted text after
+                        after_text = text[match.end():]
+                        quote_match = re.search(r'"([^"]+)"', after_text[:100])
+                        
+                        if not quote_match:
+                            # Look for quoted text before
+                            before_text = text[:match.start()]
+                            quote_matches = list(re.finditer(r'"([^"]+)"', before_text))
+                            if quote_matches:
+                                quote_match = quote_matches[-1]
+                        
+                        if quote_match:
+                            descriptive_name = quote_match.group(1)
+                            placeholder = f"{descriptive_name} in $"
+                        else:
+                            placeholder = "Amount in $"
+                    
+                    if placeholder not in seen and not placeholder.replace('_', '').strip() == '':
+                        seen.add(placeholder)
                         placeholders.append({
-                            'name': match,
+                            'name': placeholder,
                             'value': None,
-                            'question': f"What should I fill in for [{match}]?"
+                            'question': f"What should I fill in for [{placeholder}]?"
                         })
-
+    
     return placeholders
 
 
@@ -103,34 +150,44 @@ def replace_text_in_paragraph(paragraph, placeholder, value):
 
 
 def fill_document_preserve_formatting(doc: Document, values: Dict[str, str]) -> Document:
-    """Fill placeholders while preserving formatting for paragraphs, tables, headers and footers."""
-    # Paragraphs
+    """Fill placeholders while preserving ALL formatting"""
+    
+    # Create a mapping that includes underscore patterns
+    replacement_map = {}
+    for placeholder, value in values.items():
+        # Standard bracketed placeholder
+        replacement_map[f"[{placeholder}]"] = value
+        
+        # If it ends with "in $", also map the underscore pattern
+        if placeholder.endswith(" in $"):
+            # Map underscore patterns with $ prefix
+            replacement_map[f"$[_____________]"] = f"${value}"
+            replacement_map[f"[_____________]"] = value
+    
+    # Process paragraphs
     for paragraph in doc.paragraphs:
-        for placeholder, value in values.items():
-            placeholder_str = f"[{placeholder}]"
+        for placeholder_str, value in replacement_map.items():
             replace_text_in_paragraph(paragraph, placeholder_str, value)
-
-    # Tables
+    
+    # Process tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for paragraph in cell.paragraphs:
-                    for placeholder, value in values.items():
-                        placeholder_str = f"[{placeholder}]"
+                    for placeholder_str, value in replacement_map.items():
                         replace_text_in_paragraph(paragraph, placeholder_str, value)
-
-    # Headers and footers
+    
+    # Process headers
     for section in doc.sections:
         header = section.header
         for paragraph in header.paragraphs:
-            for placeholder, value in values.items():
-                placeholder_str = f"[{placeholder}]"
+            for placeholder_str, value in replacement_map.items():
                 replace_text_in_paragraph(paragraph, placeholder_str, value)
-
+        
+        # Process footer
         footer = section.footer
         for paragraph in footer.paragraphs:
-            for placeholder, value in values.items():
-                placeholder_str = f"[{placeholder}]"
+            for placeholder_str, value in replacement_map.items():
                 replace_text_in_paragraph(paragraph, placeholder_str, value)
-
+    
     return doc
