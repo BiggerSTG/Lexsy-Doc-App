@@ -273,6 +273,51 @@ async def generate_document(request: GenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating document: {str(e)}")
 
+@app.post("/preview")
+async def preview_document(request: GenerateRequest):
+    """Generate a text preview of the completed document"""
+    global current_doc_bytes, current_placeholders
+    
+    if current_doc_bytes is None:
+        raise HTTPException(status_code=400, detail="No document uploaded")
+    
+    try:
+        # Load the original document from stored bytes
+        doc = Document(BytesIO(current_doc_bytes))
+        
+        # Extract all values from conversation
+        values = extract_values_from_conversation(request.conversation_history, current_placeholders)
+        
+        # Fill the document while preserving formatting
+        filled_doc = fill_document_preserve_formatting(doc, values)
+        
+        # Extract text content for preview
+        preview_text = []
+        
+        # Get paragraphs
+        for para in filled_doc.paragraphs:
+            if para.text.strip():
+                preview_text.append(para.text)
+        
+        # Get tables
+        for table in filled_doc.tables:
+            preview_text.append("\n[TABLE]")
+            for row in table.rows:
+                row_text = " | ".join(cell.text for cell in row.cells)
+                if row_text.strip():
+                    preview_text.append(row_text)
+            preview_text.append("[END TABLE]\n")
+        
+        preview_content = "\n\n".join(preview_text)
+        
+        return {
+            "preview": preview_content,
+            "filled_count": len(values),
+            "total_count": len(current_placeholders)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating preview: {str(e)}")
+
 @app.get("/")
 async def root():
     return {"message": "Legal Document Assistant API", "status": "running"}
