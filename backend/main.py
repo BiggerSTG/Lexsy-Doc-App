@@ -5,8 +5,10 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional
 import re
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from io import BytesIO
-import json
+import copy
 
 app = FastAPI()
 
@@ -18,9 +20,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# In-memory storage for session data
-sessions = {}
 
 class ChatMessage(BaseModel):
     role: str
@@ -88,58 +87,115 @@ def extract_values_from_conversation(conversation: List[ChatMessage], placeholde
     
     return values
 
-def fill_document(original_doc: Document, values: Dict[str, str]) -> Document:
-    """Fill placeholders in the document with provided values"""
-    # Create a new document from the original
-    new_doc = Document()
+def replace_text_in_run(run, placeholder, value):
+    """Replace placeholder in a run while preserving formatting"""
+    if placeholder in run.text:
+        run.text = run.text.replace(placeholder, value)
+
+def replace_text_in_paragraph(paragraph, placeholder, value):
+    """Replace placeholder in paragraph while preserving all formatting"""
+    full_text = paragraph.text
+    if placeholder not in full_text:
+        return
     
-    # Copy styles
-    for style in original_doc.styles:
-        try:
-            if style.name not in new_doc.styles:
-                new_doc.styles.add_style(style.name, style.type)
-        except:
-            pass
+    # If the placeholder is within a single run, simple replacement
+    for run in paragraph.runs:
+        if placeholder in run.text:
+            run.text = run.text.replace(placeholder, value)
+            return
+    
+    # If placeholder spans multiple runs, we need to be more careful
+    # Build a map of character positions to runs
+    char_to_run = []
+    for run in paragraph.runs:
+        char_to_run.extend([run] * len(run.text))
+    
+    # Find all occurrences of the placeholder
+    while placeholder in paragraph.text:
+        full_text = paragraph.text
+        start_idx = full_text.find(placeholder)
+        if start_idx == -1:
+            break
+        
+        end_idx = start_idx + len(placeholder)
+        
+        # Clear the text in all runs
+        for run in paragraph.runs:
+            run.text = ""
+        
+        # Rebuild the text with replacement
+        current_pos = 0
+        for i, run in enumerate(paragraph.runs):
+            if current_pos < start_idx:
+                # Before placeholder
+                chars_to_add = min(len(full_text) - current_pos, start_idx - current_pos)
+                run.text = full_text[current_pos:current_pos + chars_to_add]
+                current_pos += chars_to_add
+            elif current_pos < end_idx:
+                # At placeholder - put replacement in first run that hits it
+                if not any(value in r.text for r in paragraph.runs[:i]):
+                    run.text = value
+                current_pos = end_idx
+            else:
+                # After placeholder
+                run.text = full_text[current_pos:]
+                break
+        break
+
+def fill_document_preserve_formatting(doc: Document, values: Dict[str, str]) -> Document:
+    """Fill placeholders while preserving ALL formatting"""
     
     # Process paragraphs
-    for para in original_doc.paragraphs:
-        text = para.text
+    for paragraph in doc.paragraphs:
         for placeholder, value in values.items():
-            text = text.replace(f"[{placeholder}]", value)
-        new_para = new_doc.add_paragraph(text)
-        new_para.style = para.style
+            placeholder_str = f"[{placeholder}]"
+            replace_text_in_paragraph(paragraph, placeholder_str, value)
     
     # Process tables
-    for table in original_doc.tables:
-        new_table = new_doc.add_table(rows=len(table.rows), cols=len(table.columns))
-        for i, row in enumerate(table.rows):
-            for j, cell in enumerate(row.cells):
-                text = cell.text
-                for placeholder, value in values.items():
-                    text = text.replace(f"[{placeholder}]", value)
-                new_table.rows[i].cells[j].text = text
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for placeholder, value in values.items():
+                        placeholder_str = f"[{placeholder}]"
+                        replace_text_in_paragraph(paragraph, placeholder_str, value)
     
-    return new_doc
+    # Process headers
+    for section in doc.sections:
+        header = section.header
+        for paragraph in header.paragraphs:
+            for placeholder, value in values.items():
+                placeholder_str = f"[{placeholder}]"
+                replace_text_in_paragraph(paragraph, placeholder_str, value)
+        
+        # Process footer
+        footer = section.footer
+        for paragraph in footer.paragraphs:
+            for placeholder, value in values.items():
+                placeholder_str = f"[{placeholder}]"
+                replace_text_in_paragraph(paragraph, placeholder_str, value)
+    
+    return doc
 
-# Global storage for uploaded document
-current_doc = None
+# Global storage for uploaded document (as bytes to preserve everything)
+current_doc_bytes = None
 current_placeholders = []
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
     """Upload and process a legal document"""
-    global current_doc, current_placeholders
+    global current_doc_bytes, current_placeholders
     
     if not file.filename.endswith('.docx'):
         raise HTTPException(status_code=400, detail="Only .docx files are supported")
     
     try:
-        # Read the uploaded file
+        # Read and store the original file bytes
         contents = await file.read()
-        doc = Document(BytesIO(contents))
+        current_doc_bytes = contents
         
-        # Store document
-        current_doc = doc
+        # Parse document for placeholder extraction
+        doc = Document(BytesIO(contents))
         
         # Extract placeholders
         placeholders = extract_placeholders(doc)
@@ -188,18 +244,21 @@ async def chat(request: ChatRequest):
 
 @app.post("/generate")
 async def generate_document(request: GenerateRequest):
-    """Generate the completed document"""
-    global current_doc, current_placeholders
+    """Generate the completed document while preserving all formatting"""
+    global current_doc_bytes, current_placeholders
     
-    if current_doc is None:
+    if current_doc_bytes is None:
         raise HTTPException(status_code=400, detail="No document uploaded")
     
     try:
+        # Load the original document from stored bytes
+        doc = Document(BytesIO(current_doc_bytes))
+        
         # Extract all values from conversation
         values = extract_values_from_conversation(request.conversation_history, current_placeholders)
         
-        # Fill the document
-        filled_doc = fill_document(current_doc, values)
+        # Fill the document while preserving formatting
+        filled_doc = fill_document_preserve_formatting(doc, values)
         
         # Save to BytesIO
         doc_io = BytesIO()
