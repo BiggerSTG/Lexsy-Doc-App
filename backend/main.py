@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict
+import re
 from docx import Document
 from io import BytesIO
 
@@ -31,9 +32,41 @@ class ChatRequest(BaseModel):
 class GenerateRequest(BaseModel):
     conversation_history: List[ChatMessage]
 
-#To be implemented: Function to extract placeholders from the document
-def extract_placeholders(doc):
-    return None
+def extract_placeholders(doc: Document) -> List[Dict[str, str]]:
+    """Extract placeholders from document in format [Placeholder Name]"""
+    placeholders = []
+    seen = set()
+    
+    # Pattern to match [Text] or \[Text\]
+    pattern = r'\[([^\]]+)\]'
+    
+    # Check paragraphs
+    for para in doc.paragraphs:
+        matches = re.findall(pattern, para.text)
+        for match in matches:
+            if match not in seen:
+                seen.add(match)
+                placeholders.append({
+                    'name': match,
+                    'value': None,
+                    'question': f"What should I fill in for [{match}]?"
+                })
+    
+    # Check tables
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                matches = re.findall(pattern, cell.text)
+                for match in matches:
+                    if match not in seen:
+                        seen.add(match)
+                        placeholders.append({
+                            'name': match,
+                            'value': None,
+                            'question': f"What should I fill in for [{match}]?"
+                        })
+    
+    return placeholders
 
 #To be implemented: Function to extract values from conversation history
 def extract_values_from_conversation(conversation_history, placeholders):
