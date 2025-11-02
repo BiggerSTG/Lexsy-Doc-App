@@ -87,8 +87,38 @@ def extract_values_from_conversation(conversation: List[ChatMessage], placeholde
     
     return values
 
-def fill_document(doc, values):
-    return None
+def fill_document(original_doc: Document, values: Dict[str, str]) -> Document:
+    """Fill placeholders in the document with provided values"""
+    # Create a new document from the original
+    new_doc = Document()
+    
+    # Copy styles
+    for style in original_doc.styles:
+        try:
+            if style.name not in new_doc.styles:
+                new_doc.styles.add_style(style.name, style.type)
+        except:
+            pass
+    
+    # Process paragraphs
+    for para in original_doc.paragraphs:
+        text = para.text
+        for placeholder, value in values.items():
+            text = text.replace(f"[{placeholder}]", value)
+        new_para = new_doc.add_paragraph(text)
+        new_para.style = para.style
+    
+    # Process tables
+    for table in original_doc.tables:
+        new_table = new_doc.add_table(rows=len(table.rows), cols=len(table.columns))
+        for i, row in enumerate(table.rows):
+            for j, cell in enumerate(row.cells):
+                text = cell.text
+                for placeholder, value in values.items():
+                    text = text.replace(f"[{placeholder}]", value)
+                new_table.rows[i].cells[j].text = text
+    
+    return new_doc
 
 # Global storage for uploaded document
 current_doc = None
