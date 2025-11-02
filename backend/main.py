@@ -68,9 +68,24 @@ def extract_placeholders(doc: Document) -> List[Dict[str, str]]:
     
     return placeholders
 
-#To be implemented: Function to extract values from conversation history
-def extract_values_from_conversation(conversation_history, placeholders):
-    return None
+def extract_values_from_conversation(conversation: List[ChatMessage], placeholders: List[Dict]) -> Dict[str, str]:
+    """Use simple pattern matching to extract values from conversation"""
+    values = {}
+    
+    # Create a mapping of lowercase placeholder names for matching
+    placeholder_names = {p['name'].lower(): p['name'] for p in placeholders}
+    
+    for i, msg in enumerate(conversation):
+        if msg.role == 'assistant':
+            # Check if the assistant asked about a placeholder
+            for placeholder_key, placeholder_name in placeholder_names.items():
+                if placeholder_key in msg.message.lower() or f"[{placeholder_name}]" in msg.message:
+                    # Get the next user message
+                    if i + 1 < len(conversation) and conversation[i + 1].role == 'user':
+                        values[placeholder_name] = conversation[i + 1].message
+                        break
+    
+    return values
 
 def fill_document(doc, values):
     return None
