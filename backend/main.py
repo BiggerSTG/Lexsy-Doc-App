@@ -2,10 +2,11 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Optional
 import re
 from docx import Document
 from io import BytesIO
+import json
 
 app = FastAPI()
 
@@ -151,9 +152,9 @@ async def upload_document(file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
-    
+
 @app.post("/chat")
-async def chat(request): #Type annotation needs to be added-missing key logic
+async def chat(request: ChatRequest):
     """Handle conversation to fill placeholders"""
     global current_placeholders
     
@@ -184,9 +185,9 @@ async def chat(request): #Type annotation needs to be added-missing key logic
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error in chat: {str(e)}")
-    
+
 @app.post("/generate")
-async def generate_document(request): #Type annotation needs to be added-missing key logic
+async def generate_document(request: GenerateRequest):
     """Generate the completed document"""
     global current_doc, current_placeholders
     
