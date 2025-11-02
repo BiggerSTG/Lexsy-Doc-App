@@ -9,6 +9,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from io import BytesIO
 import copy
+import mammoth
 
 app = FastAPI()
 
@@ -317,6 +318,44 @@ async def preview_document(request: GenerateRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating preview: {str(e)}")
+
+
+@app.post("/preview_html")
+async def preview_document_html(request: GenerateRequest):
+    """Generate an HTML preview of the completed document (keeps formatting).
+    Uses mammoth to convert the filled .docx to HTML.
+    """
+    global current_doc_bytes, current_placeholders
+
+    if current_doc_bytes is None:
+        raise HTTPException(status_code=400, detail="No document uploaded")
+
+    try:
+        # Load the original document
+        doc = Document(BytesIO(current_doc_bytes))
+
+        # Extract values from conversation
+        values = extract_values_from_conversation(request.conversation_history, current_placeholders)
+
+        # Fill document
+        filled_doc = fill_document_preserve_formatting(doc, values)
+
+        # Save filled document to BytesIO
+        doc_io = BytesIO()
+        filled_doc.save(doc_io)
+        doc_io.seek(0)
+
+        # Convert to HTML with mammoth
+        result = mammoth.convert_to_html(doc_io)
+        html = result.value
+
+        return {
+            "html": html,
+            "filled_count": len(values),
+            "total_count": len(current_placeholders)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating HTML preview: {str(e)}")
 
 @app.get("/")
 async def root():
