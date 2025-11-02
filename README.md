@@ -47,10 +47,11 @@ cd Lexsy-Doc-App
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+cd ..
+python -m backend.main
 ```
 
 The server exposes the API at `http://localhost:8000` with automatic docs at `http://localhost:8000/docs`.
