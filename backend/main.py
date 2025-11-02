@@ -19,6 +19,10 @@ app.add_middleware(
 def extract_placeholders(doc):
     return None
 
+#To be implemented: Function to extract values from conversation history
+def extract_values_from_conversation(conversation_history, placeholders):
+    return None
+
 # Global storage for uploaded document
 current_doc = None
 current_placeholders = []
@@ -50,6 +54,39 @@ async def upload_document(file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+    
+@app.post("/chat")
+async def chat(request): #Type annotation needs to be added-missing key logic
+    """Handle conversation to fill placeholders"""
+    global current_placeholders
+    
+    try:
+        # Extract values from conversation so far
+        values = extract_values_from_conversation(request.conversation_history, current_placeholders)
+        
+        # Find next unfilled placeholder
+        next_placeholder = None
+        for p in current_placeholders:
+            if p['name'] not in values:
+                next_placeholder = p
+                break
+        
+        # Generate response
+        if next_placeholder:
+            response = f"Thank you! Now, {next_placeholder['question']}"
+            all_filled = False
+        else:
+            response = "Great! I have all the information I need. Your document is ready to download."
+            all_filled = True
+        
+        return {
+            "response": response,
+            "all_filled": all_filled,
+            "filled_count": len(values),
+            "total_count": len(current_placeholders)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error in chat: {str(e)}")
 
 @app.get("/")
 async def root():
