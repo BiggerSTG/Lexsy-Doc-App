@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, FileText, MessageSquare, Download, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileText, MessageSquare, Download, CheckCircle, AlertCircle, Eye, X } from 'lucide-react';
 
 const LegalDocumentApp = () => {
   const [file, setFile] = useState(null);
@@ -10,6 +10,8 @@ const LegalDocumentApp = () => {
   const [completedDoc, setCompletedDoc] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewContent, setPreviewContent] = useState('');
   const chatEndRef = useRef(null);
 
   const API_BASE = 'http://localhost:8000';
@@ -130,6 +132,39 @@ const LegalDocumentApp = () => {
     }
   };
 
+  const handlePreview = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_history: conversationHistory
+        }),
+      });
+
+      // Log response for debugging
+      console.log('Preview HTTP response:', response);
+      const data = await response.json();
+      console.log('Preview response JSON:', data);
+
+      if (!response.ok) {
+        // If backend returned an error payload, surface it in console
+        console.error('Preview failed:', data);
+        throw new Error('Preview failed');
+      }
+
+      // Guard against undefined preview field
+      setPreviewContent(data.preview || '');
+      setShowPreview(true);
+    } catch (err) {
+      setError('Failed to generate preview');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDownload = () => {
     if (completedDoc) {
       const a = document.createElement('a');
@@ -218,13 +253,23 @@ const LegalDocumentApp = () => {
 
             {currentStep === 'conversation' && (
               <div className="space-y-4 max-w-4xl mx-auto">
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <p className="text-sm text-blue-800">
-                    <strong>Document:</strong> {file?.name}
-                  </p>
-                  <p className="text-sm text-blue-600 mt-1">
-                    {placeholders.length} placeholders found
-                  </p>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-blue-800">
+                      <strong>Document:</strong> {file?.name}
+                    </p>
+                    <p className="text-sm text-blue-600 mt-1">
+                      {placeholders.length} placeholders found
+                    </p>
+                  </div>
+                  <button
+                    onClick={handlePreview}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition disabled:opacity-50"
+                  >
+                    <Eye size={18} />
+                    Preview
+                  </button>
                 </div>
 
                 <div className="border rounded-lg h-96 overflow-y-auto p-4 bg-gray-50">
@@ -286,35 +331,47 @@ const LegalDocumentApp = () => {
             )}
 
             {currentStep === 'review' && (
-              <div className="text-center py-12 max-w-2xl mx-auto">
-                <div className="mb-6">
-                  <CheckCircle size={64} className="mx-auto text-green-500" />
-                </div>
-                <h2 className="text-xl font-semibold mb-2">Document Complete!</h2>
-                <p className="text-gray-600 mb-6">
-                  Your document has been filled with all the provided information.
-                </p>
-                <button
-                  onClick={handleDownload}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
-                >
-                  <Download size={20} />
-                  Download Document
-                </button>
-                <div className="mt-4">
-                  <button
-                    onClick={() => {
-                      setCurrentStep('upload');
-                      setFile(null);
-                      setPlaceholders([]);
-                      setConversationHistory([]);
-                      setCompletedDoc(null);
-                      setError('');
-                    }}
-                    className="text-blue-600 hover:underline text-sm"
-                  >
-                    Start Over
-                  </button>
+              <div className="max-w-4xl mx-auto">
+                <div className="text-center py-8">
+                  <div className="mb-6">
+                    <CheckCircle size={64} className="mx-auto text-green-500" />
+                  </div>
+                  <h2 className="text-xl font-semibold mb-2">Document Complete!</h2>
+                  <p className="text-gray-600 mb-6">
+                    Your document has been filled with all the provided information.
+                  </p>
+                  <div className="flex gap-4 justify-center">
+                    <button
+                      onClick={handlePreview}
+                      disabled={loading}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50"
+                    >
+                      <Eye size={20} />
+                      Preview Document
+                    </button>
+                    <button
+                      onClick={handleDownload}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
+                    >
+                      <Download size={20} />
+                      Download Document
+                    </button>
+                  </div>
+                  <div className="mt-4">
+                    <button
+                      onClick={() => {
+                        setCurrentStep('upload');
+                        setFile(null);
+                        setPlaceholders([]);
+                        setConversationHistory([]);
+                        setCompletedDoc(null);
+                        setError('');
+                      }}
+                      className="text-blue-600 hover:underline text-sm"
+                    >
+                      Start Over
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -328,10 +385,54 @@ const LegalDocumentApp = () => {
             <li>Upload your legal document template (.docx format)</li>
             <li>The system identifies placeholders like [Company Name], [Date], etc.</li>
             <li>Have a conversation to fill in each placeholder</li>
+            <li>Preview your document to verify the changes</li>
             <li>Download your completed document</li>
           </ol>
         </div>
       </div>
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Eye size={20} />
+                Document Preview
+              </h3>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="prose max-w-none">
+                <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 p-6 rounded-lg border">
+                  {previewContent}
+                </pre>
+              </div>
+            </div>
+            <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => setShowPreview(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition"
+              >
+                Close
+              </button>
+              {currentStep === 'review' && (
+                <button
+                  onClick={handleDownload}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                >
+                  Download
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
