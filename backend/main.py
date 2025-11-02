@@ -23,6 +23,9 @@ def extract_placeholders(doc):
 def extract_values_from_conversation(conversation_history, placeholders):
     return None
 
+def fill_document(doc, values):
+    return None
+
 # Global storage for uploaded document
 current_doc = None
 current_placeholders = []
@@ -87,6 +90,34 @@ async def chat(request): #Type annotation needs to be added-missing key logic
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error in chat: {str(e)}")
+    
+@app.post("/generate")
+async def generate_document(request): #Type annotation needs to be added-missing key logic
+    """Generate the completed document"""
+    global current_doc, current_placeholders
+    
+    if current_doc is None:
+        raise HTTPException(status_code=400, detail="No document uploaded")
+    
+    try:
+        # Extract all values from conversation
+        values = extract_values_from_conversation(request.conversation_history, current_placeholders)
+        
+        # Fill the document
+        filled_doc = fill_document(current_doc, values)
+        
+        # Save to BytesIO
+        doc_io = BytesIO()
+        filled_doc.save(doc_io)
+        doc_io.seek(0)
+        
+        return StreamingResponse(
+            doc_io,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": "attachment; filename=completed_document.docx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating document: {str(e)}")
 
 @app.get("/")
 async def root():
