@@ -1,6 +1,8 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from typing import List, Dict
 from docx import Document
 from io import BytesIO
 
@@ -14,6 +16,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# In-memory storage for session data
+sessions = {}
+
+class ChatMessage(BaseModel):
+    role: str
+    message: str
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_history: List[ChatMessage]
+
+class GenerateRequest(BaseModel):
+    conversation_history: List[ChatMessage]
 
 #To be implemented: Function to extract placeholders from the document
 def extract_placeholders(doc):
