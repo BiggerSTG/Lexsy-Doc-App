@@ -158,6 +158,9 @@ async def preview_document_html(request: GenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating HTML preview: {str(e)}")
 
+@router.get("/healthz")
+def healthz():
+    return {"ok": True}
 
 @router.get('/')
 async def root():
