@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import DOMPurify from 'dompurify';
 import { Upload, FileText, MessageSquare, Download, CheckCircle, AlertCircle, Eye, X } from 'lucide-react';
 
 const LegalDocumentApp = () => {
@@ -13,10 +12,7 @@ const LegalDocumentApp = () => {
   const [error, setError] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [previewContent, setPreviewContent] = useState('');
-  const [previewHtml, setPreviewHtml] = useState('');
-  const [sanitizedPreviewHtml, setSanitizedPreviewHtml] = useState('');
   const chatEndRef = useRef(null);
-  const previewContainerRef = useRef(null);
 
   const API_BASE = 'http://localhost:8000';
 
@@ -25,18 +21,6 @@ const LegalDocumentApp = () => {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [conversationHistory]);
-
-  // When sanitizedPreviewHtml is set and the modal is shown, write it
-  // directly into the DOM container as a deterministic test.
-  useEffect(() => {
-    try {
-      if (showPreview && previewContainerRef.current && sanitizedPreviewHtml) {
-        previewContainerRef.current.innerHTML = sanitizedPreviewHtml;
-      }
-    } catch (e) {
-      console.error('Failed to set preview innerHTML directly', e);
-    }
-  }, [showPreview, sanitizedPreviewHtml]);
 
   const handleFileUpload = async (e) => {
     const uploadedFile = e.target.files[0];
@@ -150,8 +134,8 @@ const LegalDocumentApp = () => {
 
   const handlePreview = async () => {
     setLoading(true);
+    setError('');
     try {
-      // Request HTML-formatted preview from backend
       const response = await fetch(`${API_BASE}/preview_html`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,57 +144,23 @@ const LegalDocumentApp = () => {
         }),
       });
 
-      // Log response for debugging and capture debug info in state
-      console.log('Preview HTML HTTP response:', response);
-      const data = await response.json();
-      console.log('Preview HTML response JSON:', data);
-
       if (!response.ok) {
-        console.error('Preview HTML failed:', data);
-        // still set debug and surface error
-        setPreviewContent('');
-        setPreviewHtml('');
-        setSanitizedPreviewHtml('');
-        throw new Error('Preview failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Preview failed');
       }
 
-      // Set both raw and HTML previews (HTML used for formatted rendering)
-      setPreviewContent(data.preview || '');
-      let rawHtml = data.html || '';
-      setPreviewHtml(rawHtml);
-
-      // If backend returned escaped HTML (e.g. "&lt;p&gt;..."), decode it first
-      try {
-        if (rawHtml.includes('&lt;') && rawHtml.includes('&gt;')) {
-          const txt = document.createElement('textarea');
-          txt.innerHTML = rawHtml;
-          rawHtml = txt.value;
-        }
-      } catch (e) {
-        console.warn('Failed to unescape HTML entities', e);
+      const data = await response.json();
+      console.log('Preview data received:', data); // Debug log
+      
+      if (!data.html) {
+        throw new Error('No HTML content received');
       }
-
-      // Extract body fragment if a full HTML document was returned
-      let fragment = rawHtml;
-      try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(rawHtml, 'text/html');
-        if (doc && doc.body && doc.body.innerHTML.trim()) {
-          fragment = doc.body.innerHTML;
-        }
-      } catch (e) {
-        console.warn('Failed to parse preview HTML, falling back to raw HTML', e);
-      }
-
-      // Sanitize the fragment before inserting into DOM
-      const safe = DOMPurify.sanitize(fragment, { ADD_ATTR: ['target'] });
-      setSanitizedPreviewHtml(safe);
-  console.log('previewHtml length:', rawHtml.length, 'sanitized length:', safe.length);
-  console.log('sanitizedPreviewHtml preview:', safe.slice(0, 300));
+      
+      setPreviewContent(data.html);
       setShowPreview(true);
     } catch (err) {
-      setError('Failed to generate preview');
-      console.error(err);
+      setError(`Failed to generate preview: ${err.message}`);
+      console.error('Preview error:', err);
     } finally {
       setLoading(false);
     }
@@ -459,20 +409,21 @@ const LegalDocumentApp = () => {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="prose max-w-none">
-                {sanitizedPreviewHtml ? (
-                  <div
-                    className="prose max-w-none p-6"
-                    dangerouslySetInnerHTML={{ __html: sanitizedPreviewHtml }}
-                  />
-                ) : (
-                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 p-6 rounded-lg border">
-                    {previewContent || 'No preview available.'}
-                  </pre>
-                )}
-
-                
-              </div>
+              {previewContent ? (
+                <div 
+                  className="prose prose-sm max-w-none bg-white p-8 rounded border"
+                  dangerouslySetInnerHTML={{ __html: previewContent }}
+                  style={{
+                    fontFamily: 'Georgia, "Times New Roman", serif',
+                    lineHeight: '1.6',
+                    color: '#000'
+                  }}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500">Loading preview...</p>
+                </div>
+              )}
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
               <button
