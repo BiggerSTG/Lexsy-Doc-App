@@ -2,7 +2,7 @@
 
 Lexsy Document Assistant is a full-stack web app built for the Lexsy software engineering assignment. It helps founders and legal teams upload legal document templates, identify dynamic placeholders, collect the missing information through a guided chat workflow, and download the completed document with the original formatting preserved.
 
-- **Live app:** https://main.d2dczcrek6651z.amplifyapp.com/
+- **Live app:** https://main.d2dczcrek6651z.amplifyapp.com/ [NOT OPERATIONAL ANYMORE]
 - **Tech stack:** React (Vite) + Tailwind CSS frontend, FastAPI backend, python-docx + Mammoth for document processing, AWS Amplify & App Runner for hosting.
 
 ## Key features
